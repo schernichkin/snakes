@@ -10,47 +10,57 @@ module Data.Snakes
     ) where
 
 import Data.Maybe (fromMaybe)
+import Data.Snakes.Internal
 
-class Monad m => Stream s m t | s -> t where
-  uncons :: s -> m (Maybe (t, s))
+-- можно обойтись без билдеров, если мы будем переключать left-right в зависимости
+-- от прохода.
+expandLeft :: (Stream s m t, Eq t, Num a, Eq a) => [SnakeState a s] -> m (Either [SnakeState a s] (Maybe (Snake a)))
+-- if have state to expand, attemt to move left
+expandLeft (SnakeState prevSnake progress ls rs:_) = do
+  return undefined
+-- this should never happen (the only reason for empty acc is when both streams
+-- ended but in this case we have found the solution)
+expandLeft [] = fail "Data.Snakes: no state to expand."
 
-instance Monad m => Stream [a] m a where
-  uncons []     = return $ Nothing
-  uncons (x:xs) = return $ Just (x, xs)
-
-data Snake a = Snake (SnakeHead a) a deriving ( Show, Eq )
-
-data SnakeHead a = HeadNill
-                 | HeadLeft (Snake a)
-                 | HeadRight (Snake a)
-                 | HeadBoth (Snake a) (Snake a)
-                 deriving ( Show, Eq )
-
-data SnakeState a s = SnakeState (Snake a) a s s
-
-slideDown :: (Stream s m t, Eq t, Num a) => s -> s -> m (a, Maybe (s, s))
-slideDown = go 0 where
-  go a ls rs = do
-    lr <- uncons ls
-    rr <- uncons rs
-    case (lr, rr) of
-      (Just (l, ls'), Just (r, rs')) | l == r -> go (a + 1) ls' rs'
-      (Nothing, Nothing) -> return (a, Nothing)
-      _ -> return (a, Just (ls, rs))
-
-start :: (Stream s m t, Eq t, Num a) => s -> s -> m (Snake a, Maybe (s, s))
-start ls rs = do
-  (a, ms) <- slideDown ls rs
-  return (Snake HeadNill a, ms)
-
-expand :: (Num a, Eq a, Monad m) => Maybe a -> [SnakeState a s] -> m (Maybe (Snake a))
+expand :: (Stream s m t, Eq t, Num a, Eq a) => Maybe a -> [SnakeState a s] -> m (Maybe (Snake a))
 expand d ss = if fromMaybe 1 d == 0
-  then return Nothing
-  else error "d > 0"
-    
+    -- if search distance limit hit return nothing
+    then return Nothing
+    -- otherwise attemt to expand
+    else expandLeft
+  where
+    -- это не верно. Нам нужно либо собрать аккумулятор (причем в таком виде,
+    -- чтобы не пришлось его разворачивать и перейти с ним на следующую итерацию,
+    -- либо выяснить, что мы нашли решение).
+    expandLeft = do
+      case ss of
+        -- if having state to expand, attemt to move left
+        (SnakeState prevSnake progress ls rs:_) -> do
+          lr <- uncons ls
+          case lr of
+            -- if can move left build left snake
+            Just (l, ls') -> do
+              (a, ms) <- slideDown ls' rs
+              let leftSnake = Snake (HeadLeft prevSnake) a
+              case ms of
+                -- if left snake not final add it to accumulator and continue expanding
+                Just (ls'', rs'') -> expandCenter [SnakeState leftSnake (progress + 1 + a * 2) ls'' rs'']
+            -- otherwise continue expanding without left snake
+            Nothing -> expandCenter []
+        -- otherwise return nothing
+        [] -> return Nothing
+
+    expandCenter = go ss
+      where
+        go ss' acc = undefined
+
 snakes :: (Stream s m t, Eq t, Num a, Eq a) => s -> s -> Maybe a -> m (Maybe (Snake a))
 snakes ls rs d = do
-  (h@(Snake _ l), ms) <- start ls rs
+  -- build head snake
+  (a, ms) <- slideDown ls rs
+  let headSnake = Snake HeadNill a
   case ms of
-    Just (ls, rs) -> expand d [SnakeState h l ls rs]
-    Nothing -> return $ Just h
+    -- if head snake not final attemt to expand search area
+    Just (ls', rs') -> expand d [SnakeState headSnake (a * 2) ls' rs']
+    -- otherwise just return it
+    Nothing -> return $ Just headSnake
