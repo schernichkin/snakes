@@ -4,5 +4,5 @@ import Data.Snakes
 
 main :: IO ()
 main = do
-  a <- snakes "abc" "abc" (Just 10)
+  a <- snake Nothing "abc" "abc"
   return ()
