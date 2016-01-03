@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP                    #-}
+{-# LANGUAGE DeriveGeneric          #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
@@ -6,6 +7,8 @@
 -- | This module is created to expose internal functions for unit testing
 -- only and should not be used directly.
 module Data.Snakes.Internal where
+
+import GHC.Generics
 
 #if __GLASGOW_HASKELL__ < 710
 import Data.Functor ((<$>))
@@ -23,14 +26,16 @@ streamToList = go []
       case res of
         Just (a, s') -> go (a:acc) s'
         Nothing -> return $ reverse acc
+{-# INLINE streamToList #-}
 
 -- | Stream instance for haskell list.
 instance Monad m => Stream [a] m a where
-  uncons []     = return Nothing
   uncons (x:xs) = return $ Just (x, xs)
+  uncons []     = return Nothing
+  {-# INLINE uncons #-}
 
 -- | Snake indicates where non-matching token was read from and matching token count.
-data Snake a = Snake (SnakeHead a) a deriving ( Show, Eq )
+data Snake a = Snake (SnakeHead a) a deriving ( Show, Eq, Generic )
 
 -- | Snake head points where token was read from (left or right or none in case
 -- of first snake or either if both actions will lead to the same progress value).
@@ -38,7 +43,7 @@ data SnakeHead a = HeadNill
                  | HeadLeft (Snake a)
                  | HeadRight (Snake a)
                  | HeadEither (Snake a) (Snake a)
-                 deriving ( Show, Eq )
+                 deriving ( Show, Eq, Generic )
 
 -- | Snake state holds snake, progress value (sum of tokens read from the both
 -- streams) and unconsumed streams.
@@ -55,6 +60,7 @@ slideDown = go 0 where
       (Just (l, ls'), Just (r, rs')) | l == r -> go (a + 1) ls' rs'
       (Nothing, Nothing) -> return (a, Nothing)
       _ -> return (a, Just (ls, rs))
+{-# INLINE slideDown #-}
 
 -- | Slide down the diagonal and return either Snake if both streams exhausted
 -- (solution found) or SnakeState otherwise.
@@ -67,6 +73,7 @@ slideDownSnake ls rs snakeHead headProgress = do
   return $ case ms of
     Just (ls', rs') -> Left $ SnakeState snake (a * 2 + headProgress) ls' rs'
     Nothing -> Right snake
+{-# INLINE slideDownSnake #-}
 
 -- | Attemt to build a new snake by consuming token from the left stream.
 -- Returns nothing if the left stream is empty, or new state if non-final snake
@@ -152,7 +159,7 @@ expandRightToLeft ss = moveRight (head ss) >>= continueExpand (go ss) []
 data Diff t = First t
             | Second t
             | Both t t
-            deriving ( Show, Eq )
+            deriving ( Show, Eq, Generic )
 
 -- в публичных модулях не следует экспортировать конструктор, следует
 -- использовать этот тип в качестве абстрактного, для которого важно только
@@ -184,6 +191,7 @@ instance (Stream s m t, Num a, Eq a) => Stream (DiffStream s t a) m (Diff t) whe
         (l, ls') <- lr
         (r, rs') <- rr
         return (Both l r, DiffStream  h ls' rs' (n - 1))
+  {-# INLINE uncons #-}
 
 data SnakeShape = Straight | Wriggled
 
@@ -205,3 +213,4 @@ snakeToDiffStream shape ls rs = go BendRight StreamNill
     bendRight acc a = go BendRight (StreamRight $ streamCont acc a)
 
     streamCont acc a (ls', rs') = DiffStream acc ls' rs' a
+{-# INLINE snakeToDiffStream #-}

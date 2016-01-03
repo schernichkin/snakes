@@ -5,5 +5,6 @@ import Data.Snakes.DiffLike
 
 main :: IO ()
 main = do
-  print $ getDiff "axxbxx" "bxxaxxbxx" 
+  a <- snake Nothing "" "1234S"
+  print a
   return ()

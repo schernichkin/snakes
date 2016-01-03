@@ -37,7 +37,9 @@ snake d l r = do
 
     goLeftToRight = go expandLeftToRight goRightToLeft
     goRightToLeft = go expandRightToLeft goLeftToRight
+{-# INLINE snake #-}
 
 diffStream :: (Stream s m t, Eq t, Num a, Ord a)
            => SnakeShape -> Maybe a -> s -> s -> m (Maybe (DiffStream s t a))
 diffStream sh d l r = fmap (snakeToDiffStream sh l r) <$> snake d l r
+{-# INLINE diffStream #-}
