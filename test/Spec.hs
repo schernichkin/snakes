@@ -3,6 +3,7 @@
 import           Data.Functor.Identity
 import           Data.Maybe
 import           Data.Snakes
+import           Data.Snakes.DiffLike
 import           Data.Snakes.Internal
 import           Test.HUnit hiding ( Test )
 import           Test.Framework
@@ -195,8 +196,16 @@ streamTest = testGroup "Stream"
       runIdentity (streamToList s) == s
   ]
 
+diffLikeTest :: Test
+diffLikeTest = testGroup "Diff-like API"
+  [ testCase "known problem 1" $
+    [ Second 'b', Second 'x', Second 'x', Both 'a' 'a', Both 'x' 'x', Both 'x' 'x', Both 'b' 'b', Both 'x' 'x', Both 'x' 'x' ]
+    @=? getDiff "axxbxx" "bxxaxxbxx"
+  ]
+
 main :: IO ()
 main = defaultMain
   [ snakesTest
   , streamTest
+  , diffLikeTest
   ]

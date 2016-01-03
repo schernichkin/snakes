@@ -1,8 +1,9 @@
 module Main where
 
 import Data.Snakes
+import Data.Snakes.DiffLike
 
 main :: IO ()
 main = do
-  a <- snake Nothing "abc" "abc"
+  print $ getDiff "axxbxx" "bxxaxxbxx" 
   return ()

@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                    #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
@@ -5,6 +6,10 @@
 -- | This module is created to expose internal functions for unit testing
 -- only and should not be used directly.
 module Data.Snakes.Internal where
+
+#if __GLASGOW_HASKELL__ < 710
+import Data.Functor ((<$>))
+#endif
 
 -- | Generic stream to read tokens from.
 class Monad m => Stream s m t | s -> t where
@@ -139,3 +144,64 @@ expandRightToLeft ss = moveRight (head ss) >>= continueExpand (go ss) []
     go state acc = case state of
       r:remains@(l:_) -> moveCenter l r >>= continueExpand (go remains) acc
       [l] -> moveLeft l >>= continueExpand (return . Left) acc
+
+-- | A value is either from the 'First' stream, the 'Second' or from 'Both'.
+-- 'Both' contains both the left and right values, in case you are using a form
+-- of equality that doesn't check all data (for example, if you are using a
+-- newtype to only perform equality on side of a tuple).
+data Diff t = First t
+            | Second t
+            | Both t t
+            deriving ( Show, Eq )
+
+-- в публичных модулях не следует экспортировать конструктор, следует
+-- использовать этот тип в качестве абстрактного, для которого важно только
+-- то, что он является экземпляром  Stream
+data DiffStream s t a = DiffStream (DiffStreamHead s t a) s s a
+
+data DiffStreamHead s t a = StreamNill
+                          | StreamLeft  ((s, s) -> DiffStream s t a)
+                          | StreamRight ((s, s) -> DiffStream s t a)
+
+instance (Stream s m t, Num a, Eq a) => Stream (DiffStream s t a) m (Diff t) where
+  uncons (DiffStream h ls rs n) = if n == 0
+    then case h of
+      StreamNill   -> return Nothing
+      StreamLeft f -> do
+        lr <- uncons ls
+        return $ do
+          (l, ls') <- lr
+          return (First l, f (ls', rs))
+      StreamRight f -> do
+        rr <- uncons rs
+        return $ do
+          (r, rs') <- rr
+          return (Second r, f (ls, rs'))
+    else do
+      lr <- uncons ls
+      rr <- uncons rs
+      return $ do
+        (l, ls') <- lr
+        (r, rs') <- rr
+        return (Both l r, DiffStream  h ls' rs' (n - 1))
+
+data SnakeShape = Straight | Wriggled
+
+data LastBend = BendLeft | BendRight
+
+snakeToDiffStream :: SnakeShape -> s -> s -> Snake a -> DiffStream s t a
+snakeToDiffStream shape ls rs = go BendRight StreamNill
+  where
+    go _ acc (Snake HeadNill a) = DiffStream acc ls rs a
+    go _ acc (Snake (HeadLeft s) a) = bendLeft acc a s
+    go _ acc (Snake (HeadRight s) a) = bendRight acc a s
+    go bend acc (Snake (HeadEither sl sr) a) = case (shape, bend) of
+      (Straight, BendLeft)  -> bendLeft acc a sl
+      (Wriggled, BendRight) -> bendLeft acc a sl
+      (Straight, BendRight) -> bendRight acc a sr
+      (Wriggled, BendLeft)  -> bendRight acc a sr
+
+    bendLeft acc a = go BendLeft (StreamLeft $ streamCont acc a)
+    bendRight acc a = go BendRight (StreamRight $ streamCont acc a)
+
+    streamCont acc a (ls', rs') = DiffStream acc ls' rs' a

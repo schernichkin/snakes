@@ -1,15 +1,26 @@
+{-# LANGUAGE CPP                    #-}
+
 module Data.Snakes
     ( Stream (..)
     , Snake (..)
     , SnakeHead (..)
+    , SnakeShape (..)
+    , Diff (..)
     , snake
+    , diffStream
+    -- * Utils
+    , streamToList
     ) where
 
 import Data.Maybe (fromMaybe)
 import Data.Snakes.Internal
 
+#if __GLASGOW_HASKELL__ < 710
+import Data.Functor ((<$>))
+#endif
+
 snake :: (Stream s m t, Eq t, Num a, Ord a)
-       => Maybe a -> s -> s -> m (Maybe (Snake a))
+      => Maybe a -> s -> s -> m (Maybe (Snake a))
 snake d l r = do
   firstSnake <- slideDownSnake l r HeadNill 0
   case firstSnake of
@@ -26,3 +37,7 @@ snake d l r = do
 
     goLeftToRight = go expandLeftToRight goRightToLeft
     goRightToLeft = go expandRightToLeft goLeftToRight
+
+diffStream :: (Stream s m t, Eq t, Num a, Ord a)
+           => SnakeShape -> Maybe a -> s -> s -> m (Maybe (DiffStream s t a))
+diffStream sh d l r = fmap (snakeToDiffStream sh l r) <$> snake d l r
